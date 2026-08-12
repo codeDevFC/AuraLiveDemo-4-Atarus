@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { VideoTimeline } from './VideoTimeline'
 import { AIDetectionOverlay } from './AIDetectionOverlay'
+import { VideoSourceInput, VideoSource } from './VideoSourceInput'
 import { VideoFrame, DetectedObject } from '@/types/video'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,7 @@ import { getDataSourceManager } from '@/lib/dataSourceManager'
 import { 
   Play, Pause, RefreshCw, Activity, 
   AlertCircle, TrendingUp, 
-  Cpu, Zap, Database
+  Cpu, Zap, Database, Video, Link, Upload, Youtube, Camera, Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +31,7 @@ export function VideoIntelligenceDemo() {
     avgConfidence: 0,
   })
   const [isProcessing, setIsProcessing] = useState(false)
+  const [showSourceInput, setShowSourceInput] = useState(false)
 
   const dataManager = getDataSourceManager()
 
@@ -128,6 +130,22 @@ export function VideoIntelligenceDemo() {
     setTimeout(() => setIsProcessing(false), 500)
   }, [])
 
+  // Handle video source selection
+  const handleSourceSelect = useCallback((source: VideoSource) => {
+    console.log('Video source selected:', source)
+    toast({
+      title: 'Video Source Added',
+      description: `${source.name} - Processing...`,
+      type: 'success',
+    })
+    setShowSourceInput(false)
+    
+    // Switch to live mode when a source is added
+    if (mode !== 'live') {
+      handleModeChange('live')
+    }
+  }, [mode, handleModeChange])
+
   const handleFrameSelect = useCallback((frame: VideoFrame) => {
     setSelectedFrame(frame)
     setSelectedObject(null)
@@ -189,7 +207,16 @@ export function VideoIntelligenceDemo() {
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSourceInput(!showSourceInput)}
+            className="gap-1"
+          >
+            <Video className="h-4 w-4" />
+            {showSourceInput ? 'Hide Source' : 'Add Video'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -208,6 +235,14 @@ export function VideoIntelligenceDemo() {
           </Button>
         </div>
       </div>
+
+      {/* Video Source Input */}
+      {showSourceInput && (
+        <VideoSourceInput
+          onSourceSelect={handleSourceSelect}
+          isLoading={isProcessing}
+        />
+      )}
 
       {/* Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
