@@ -2,10 +2,10 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { formatDuration, formatTimestamp } from '@/lib/utils'
-import { VideoFrame, DetectedObject } from '@/types/video'
+import { formatDuration } from '@/lib/utils'
+import { VideoFrame } from '@/types/video'
 import { cn } from '@/lib/utils'
-import { Play, Pause, AlertCircle, Activity } from 'lucide-react'
+import { Play, Pause, Activity } from 'lucide-react'
 
 interface VideoTimelineProps {
   frames: VideoFrame[]

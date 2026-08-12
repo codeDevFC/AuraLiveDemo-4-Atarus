@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/toaster'
 import { VideoIntelligenceDemo } from '@/features/video/VideoIntelligenceDemo'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Video, Bell, Search, Settings, Activity, Camera, Cpu, LayoutDashboard } from 'lucide-react'
+import { Video, Bell, Search, Activity, Cpu, LayoutDashboard } from 'lucide-react'
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('video')

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DetectedObject, VideoFrame } from '@/types/video'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { X, Target } from 'lucide-react'
+import { Target } from 'lucide-react'
 
 interface AIDetectionOverlayProps {
   frame: VideoFrame | null
@@ -29,7 +29,7 @@ function BoundingBox({
   showLabel = true,
   showConfidence = true,
 }: BoundingBoxProps) {
-  const { boundingBox, label, confidence, id } = object
+  const { boundingBox, label, confidence } = object
 
   // Get color based on confidence
   const getColor = (conf: number) => {
@@ -113,7 +113,6 @@ export function AIDetectionOverlay({
   minConfidence = 0.3,
 }: AIDetectionOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
 
   // Filter objects by confidence
   const objects = frame?.metadata.objects?.filter(
@@ -124,11 +123,7 @@ export function AIDetectionOverlay({
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect()
-        setContainerSize({
-          width: rect.width,
-          height: rect.height,
-        })
+        // Just trigger re-render
       }
     }
 

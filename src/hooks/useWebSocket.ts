@@ -69,7 +69,7 @@ export function useWebSocket({
         }
       }
 
-      ws.onclose = (event) => {
+      ws.onclose = () => {
         if (!isMountedRef.current) return
         setState((prev) => ({
           ...prev,

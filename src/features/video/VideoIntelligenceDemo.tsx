@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { VideoTimeline } from './VideoTimeline'
 import { AIDetectionOverlay } from './AIDetectionOverlay'
 import { VideoFrame, DetectedObject } from '@/types/video'
@@ -7,44 +7,99 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { WebSocketMessage } from '@/types/api'
 import { toast } from '@/components/ui/toaster'
 import { formatTimestamp } from '@/lib/utils'
 import { 
   Play, Pause, RefreshCw, Activity, 
-  Camera, AlertCircle, TrendingUp, 
-  Cpu, Zap, Maximize2 
+  AlertCircle, TrendingUp, 
+  Cpu, Zap
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Generate a colored canvas as mock video frame
+function generateMockFrame(width: number = 640, height: number = 360): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  
+  // Dark background with gradient
+  const gradient = ctx.createLinearGradient(0, 0, width, height)
+  gradient.addColorStop(0, '#1a1a2e')
+  gradient.addColorStop(0.5, '#16213e')
+  gradient.addColorStop(1, '#0f3460')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, width, height)
+  
+  // Add some random "video" noise
+  for (let i = 0; i < 100; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`
+    ctx.fillRect(
+      Math.random() * width,
+      Math.random() * height,
+      Math.random() * 10 + 1,
+      Math.random() * 10 + 1
+    )
+  }
+  
+  // Add grid pattern
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
+  ctx.lineWidth = 1
+  for (let x = 0; x < width; x += 40) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, height)
+    ctx.stroke()
+  }
+  for (let y = 0; y < height; y += 40) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(width, y)
+    ctx.stroke()
+  }
+  
+  // Add a "camera feed" label
+  ctx.fillStyle = 'rgba(255,255,255,0.1)'
+  ctx.font = '12px monospace'
+  ctx.fillText('📹 LIVE FEED', 10, 30)
+  
+  return canvas.toDataURL('image/jpeg', 0.7)
+}
 
 // Mock data generator for demo
 function generateMockFrames(count: number = 50): VideoFrame[] {
   const frames: VideoFrame[] = []
-  const objects = ['person', 'vehicle', 'animal', 'object']
+  const objects = ['person', 'vehicle', 'animal', 'object', 'face']
+  const baseImage = generateMockFrame()
   
   for (let i = 0; i < count; i++) {
-    const timestamp = Date.now() - (count - i) * 1000
-    const hasDetections = Math.random() > 0.6
+    const timestamp = Date.now() - (count - i) * 2000
+    const hasDetections = Math.random() > 0.4
+    
+    // Generate a slightly different frame each time
+    const frameImage = i % 5 === 0 ? generateMockFrame() : baseImage
     
     frames.push({
       id: `frame-${i}`,
       timestamp,
+      dataUrl: frameImage,
       metadata: {
-        width: 1920,
-        height: 1080,
+        width: 640,
+        height: 360,
         fps: 30,
         confidence: 0.7 + Math.random() * 0.3,
-        objects: hasDetections ? Array.from({ length: Math.floor(Math.random() * 3) + 1 }, (_, j) => ({
+        objects: hasDetections ? Array.from({ length: Math.floor(Math.random() * 4) + 1 }, (_, j) => ({
           id: `obj-${i}-${j}`,
           label: objects[Math.floor(Math.random() * objects.length)],
           confidence: 0.5 + Math.random() * 0.5,
           boundingBox: {
-            x: Math.random() * 0.8,
-            y: Math.random() * 0.8,
-            width: 0.1 + Math.random() * 0.3,
-            height: 0.1 + Math.random() * 0.3,
+            x: 0.1 + Math.random() * 0.7,
+            y: 0.1 + Math.random() * 0.7,
+            width: 0.05 + Math.random() * 0.3,
+            height: 0.05 + Math.random() * 0.3,
           },
-          trackingId: `track-${Math.floor(Math.random() * 10)}`,
+          trackingId: Math.random() > 0.5 ? `track-${Math.floor(Math.random() * 20)}` : undefined,
         })) : [],
       },
     })
@@ -67,19 +122,15 @@ export function VideoIntelligenceDemo() {
   // WebSocket connection
   const { 
     isConnected, 
-    lastMessage, 
-    sendMessage,
     reconnectAttempts 
   } = useWebSocket({
-    url: 'wss://echo.websocket.org', // Demo echo server
+    url: 'wss://echo.websocket.org',
     onMessage: (data) => {
       console.log('WebSocket message received:', data)
-      
-      // Handle different message types
       if (data.type === 'detection') {
         toast({
           title: 'New Detection',
-          description: `AI detected objects in frame`,
+          description: 'AI detected objects in frame',
           type: 'info',
         })
       }
@@ -116,7 +167,6 @@ export function VideoIntelligenceDemo() {
       setSelectedFrame(initialFrames[Math.floor(initialFrames.length / 2)])
     }
 
-    // Update stats
     const totalDetections = initialFrames.reduce(
       (acc, f) => acc + f.metadata.objects.length, 0
     )
@@ -139,22 +189,23 @@ export function VideoIntelligenceDemo() {
       const newFrame: VideoFrame = {
         id: `frame-${Date.now()}`,
         timestamp: Date.now(),
+        dataUrl: generateMockFrame(),
         metadata: {
-          width: 1920,
-          height: 1080,
+          width: 640,
+          height: 360,
           fps: 30,
           confidence: 0.6 + Math.random() * 0.4,
-          objects: Math.random() > 0.5 ? Array.from({ length: Math.floor(Math.random() * 4) }, (_, i) => ({
+          objects: Math.random() > 0.4 ? Array.from({ length: Math.floor(Math.random() * 4) + 1 }, (_, i) => ({
             id: `obj-${Date.now()}-${i}`,
             label: ['person', 'vehicle', 'animal', 'object', 'face'][Math.floor(Math.random() * 5)],
             confidence: 0.5 + Math.random() * 0.5,
             boundingBox: {
-              x: Math.random() * 0.8,
-              y: Math.random() * 0.8,
+              x: 0.1 + Math.random() * 0.7,
+              y: 0.1 + Math.random() * 0.7,
               width: 0.05 + Math.random() * 0.3,
               height: 0.05 + Math.random() * 0.3,
             },
-            trackingId: `track-${Math.floor(Math.random() * 20)}`,
+            trackingId: Math.random() > 0.5 ? `track-${Math.floor(Math.random() * 20)}` : undefined,
           })) : [],
         },
       }
@@ -165,28 +216,24 @@ export function VideoIntelligenceDemo() {
       if (selectedFrame?.id === frames[frames.length - 1]?.id) {
         setSelectedFrame(newFrame)
       }
-    }, 3000)
+
+      // Update stats
+      const totalDetections = frames.reduce(
+        (acc, f) => acc + f.metadata.objects.length, 0
+      )
+      const avgConf = frames.reduce(
+        (acc, f) => acc + f.metadata.confidence, 0
+      ) / (frames.length || 1)
+
+      setStats({
+        totalFrames: frames.length,
+        totalDetections,
+        avgConfidence: avgConf,
+      })
+    }, 5000)
 
     return () => clearInterval(interval)
   }, [isLive, selectedFrame, frames])
-
-  // Update stats when frames change
-  useEffect(() => {
-    if (frames.length === 0) return
-    
-    const totalDetections = frames.reduce(
-      (acc, f) => acc + f.metadata.objects.length, 0
-    )
-    const avgConf = frames.reduce(
-      (acc, f) => acc + f.metadata.confidence, 0
-    ) / frames.length
-
-    setStats({
-      totalFrames: frames.length,
-      totalDetections,
-      avgConfidence: avgConf,
-    })
-  }, [frames])
 
   const handleFrameSelect = useCallback((frame: VideoFrame) => {
     setSelectedFrame(frame)
@@ -209,6 +256,19 @@ export function VideoIntelligenceDemo() {
     if (newFrames.length > 0) {
       setSelectedFrame(newFrames[Math.floor(newFrames.length / 2)])
     }
+    
+    const totalDetections = newFrames.reduce(
+      (acc, f) => acc + f.metadata.objects.length, 0
+    )
+    const avgConf = newFrames.reduce(
+      (acc, f) => acc + f.metadata.confidence, 0
+    ) / newFrames.length
+
+    setStats({
+      totalFrames: newFrames.length,
+      totalDetections,
+      avgConfidence: avgConf,
+    })
     
     toast({
       title: 'Regenerated',
@@ -392,7 +452,7 @@ export function VideoIntelligenceDemo() {
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-8">
-                  <Target className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">Click on any detection</p>
                   <p className="text-xs">or press '1' to select first</p>
                 </div>
