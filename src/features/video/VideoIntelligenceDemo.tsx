@@ -9,122 +9,36 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { toast } from '@/components/ui/toaster'
 import { formatTimestamp } from '@/lib/utils'
+import { ModeToggle, DataMode } from '@/components/ui/mode-toggle'
+import { getDataSourceManager } from '@/lib/dataSourceManager'
 import { 
   Play, Pause, RefreshCw, Activity, 
   AlertCircle, TrendingUp, 
-  Cpu, Zap
+  Cpu, Zap, Database
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-// Generate a colored canvas as mock video frame
-function generateMockFrame(width: number = 640, height: number = 360): string {
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
-  
-  // Dark background with gradient
-  const gradient = ctx.createLinearGradient(0, 0, width, height)
-  gradient.addColorStop(0, '#1a1a2e')
-  gradient.addColorStop(0.5, '#16213e')
-  gradient.addColorStop(1, '#0f3460')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, width, height)
-  
-  // Add some random "video" noise
-  for (let i = 0; i < 100; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`
-    ctx.fillRect(
-      Math.random() * width,
-      Math.random() * height,
-      Math.random() * 10 + 1,
-      Math.random() * 10 + 1
-    )
-  }
-  
-  // Add grid pattern
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
-  ctx.lineWidth = 1
-  for (let x = 0; x < width; x += 40) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, height)
-    ctx.stroke()
-  }
-  for (let y = 0; y < height; y += 40) {
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(width, y)
-    ctx.stroke()
-  }
-  
-  // Add a "camera feed" label
-  ctx.fillStyle = 'rgba(255,255,255,0.1)'
-  ctx.font = '12px monospace'
-  ctx.fillText('📹 LIVE FEED', 10, 30)
-  
-  return canvas.toDataURL('image/jpeg', 0.7)
-}
-
-// Mock data generator for demo
-function generateMockFrames(count: number = 50): VideoFrame[] {
-  const frames: VideoFrame[] = []
-  const objects = ['person', 'vehicle', 'animal', 'object', 'face']
-  const baseImage = generateMockFrame()
-  
-  for (let i = 0; i < count; i++) {
-    const timestamp = Date.now() - (count - i) * 2000
-    const hasDetections = Math.random() > 0.4
-    
-    // Generate a slightly different frame each time
-    const frameImage = i % 5 === 0 ? generateMockFrame() : baseImage
-    
-    frames.push({
-      id: `frame-${i}`,
-      timestamp,
-      dataUrl: frameImage,
-      metadata: {
-        width: 640,
-        height: 360,
-        fps: 30,
-        confidence: 0.7 + Math.random() * 0.3,
-        objects: hasDetections ? Array.from({ length: Math.floor(Math.random() * 4) + 1 }, (_, j) => ({
-          id: `obj-${i}-${j}`,
-          label: objects[Math.floor(Math.random() * objects.length)],
-          confidence: 0.5 + Math.random() * 0.5,
-          boundingBox: {
-            x: 0.1 + Math.random() * 0.7,
-            y: 0.1 + Math.random() * 0.7,
-            width: 0.05 + Math.random() * 0.3,
-            height: 0.05 + Math.random() * 0.3,
-          },
-          trackingId: Math.random() > 0.5 ? `track-${Math.floor(Math.random() * 20)}` : undefined,
-        })) : [],
-      },
-    })
-  }
-  
-  return frames
-}
 
 export function VideoIntelligenceDemo() {
   const [frames, setFrames] = useState<VideoFrame[]>([])
   const [selectedFrame, setSelectedFrame] = useState<VideoFrame | null>(null)
   const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null)
   const [isLive, setIsLive] = useState(true)
+  const [mode, setMode] = useState<DataMode>('demo')
   const [stats, setStats] = useState({
     totalFrames: 0,
     totalDetections: 0,
     avgConfidence: 0,
   })
+  const [isProcessing, setIsProcessing] = useState(false)
 
-  // WebSocket connection
+  const dataManager = getDataSourceManager()
+
+  // WebSocket connection for live mode
   const { 
     isConnected, 
     reconnectAttempts 
   } = useWebSocket({
-    url: 'wss://echo.websocket.org',
+    url: mode === 'live' ? 'wss://echo.websocket.org' : '',
     onMessage: (data) => {
       console.log('WebSocket message received:', data)
       if (data.type === 'detection') {
@@ -137,103 +51,82 @@ export function VideoIntelligenceDemo() {
     },
     onOpen: () => {
       toast({
-        title: 'Connected',
-        description: 'WebSocket connection established',
+        title: 'WebSocket Connected',
+        description: 'Real-time data stream active',
         type: 'success',
       })
     },
     onClose: () => {
       toast({
-        title: 'Disconnected',
-        description: 'WebSocket connection lost',
+        title: 'WebSocket Disconnected',
+        description: 'Switching to demo mode',
         type: 'warning',
       })
     },
     onError: (error) => {
       console.error('WebSocket error:', error)
-      toast({
-        title: 'Connection Error',
-        description: 'Failed to connect to WebSocket server',
-        type: 'error',
-      })
+      if (mode === 'live') {
+        toast({
+          title: 'Connection Error',
+          description: 'Falling back to demo mode',
+          type: 'error',
+        })
+        setMode('demo')
+      }
     },
   })
 
-  // Generate initial frames
+  // Subscribe to data source manager
   useEffect(() => {
-    const initialFrames = generateMockFrames(80)
-    setFrames(initialFrames)
-    if (initialFrames.length > 0) {
-      setSelectedFrame(initialFrames[Math.floor(initialFrames.length / 2)])
-    }
-
-    const totalDetections = initialFrames.reduce(
-      (acc, f) => acc + f.metadata.objects.length, 0
-    )
-    const avgConf = initialFrames.reduce(
-      (acc, f) => acc + f.metadata.confidence, 0
-    ) / initialFrames.length
-
-    setStats({
-      totalFrames: initialFrames.length,
-      totalDetections,
-      avgConfidence: avgConf,
+    const unsubscribe = dataManager.subscribe((newFrames) => {
+      setFrames(newFrames)
+      
+      // Update stats
+      const stats = dataManager.getStats()
+      setStats(stats)
+      
+      // Auto-select latest frame if in live mode
+      if (isLive && newFrames.length > 0) {
+        setSelectedFrame(newFrames[newFrames.length - 1])
+      }
     })
+
+    // Set initial mode
+    dataManager.setMode('demo')
+    setMode('demo')
+
+    return () => {
+      unsubscribe()
+      dataManager.destroy()
+    }
   }, [])
 
-  // Simulate live updates
-  useEffect(() => {
-    if (!isLive) return
-
-    const interval = setInterval(() => {
-      const newFrame: VideoFrame = {
-        id: `frame-${Date.now()}`,
-        timestamp: Date.now(),
-        dataUrl: generateMockFrame(),
-        metadata: {
-          width: 640,
-          height: 360,
-          fps: 30,
-          confidence: 0.6 + Math.random() * 0.4,
-          objects: Math.random() > 0.4 ? Array.from({ length: Math.floor(Math.random() * 4) + 1 }, (_, i) => ({
-            id: `obj-${Date.now()}-${i}`,
-            label: ['person', 'vehicle', 'animal', 'object', 'face'][Math.floor(Math.random() * 5)],
-            confidence: 0.5 + Math.random() * 0.5,
-            boundingBox: {
-              x: 0.1 + Math.random() * 0.7,
-              y: 0.1 + Math.random() * 0.7,
-              width: 0.05 + Math.random() * 0.3,
-              height: 0.05 + Math.random() * 0.3,
-            },
-            trackingId: Math.random() > 0.5 ? `track-${Math.floor(Math.random() * 20)}` : undefined,
-          })) : [],
-        },
-      }
-
-      setFrames(prev => [...prev.slice(-100), newFrame])
-      
-      // Auto-select latest frame
-      if (selectedFrame?.id === frames[frames.length - 1]?.id) {
-        setSelectedFrame(newFrame)
-      }
-
-      // Update stats
-      const totalDetections = frames.reduce(
-        (acc, f) => acc + f.metadata.objects.length, 0
-      )
-      const avgConf = frames.reduce(
-        (acc, f) => acc + f.metadata.confidence, 0
-      ) / (frames.length || 1)
-
-      setStats({
-        totalFrames: frames.length,
-        totalDetections,
-        avgConfidence: avgConf,
-      })
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [isLive, selectedFrame, frames])
+  // Handle mode change
+  const handleModeChange = useCallback((newMode: DataMode) => {
+    setIsProcessing(true)
+    setMode(newMode)
+    dataManager.setMode(newMode)
+    
+    const modeLabels = {
+      demo: 'Demo Mode',
+      live: 'Live Mode',
+      hybrid: 'Hybrid Mode'
+    }
+    
+    const modeDescriptions = {
+      demo: 'Using mock data for demonstration',
+      live: 'Analyzing real video with AI backend',
+      hybrid: 'Demo UI with realistic data simulation'
+    }
+    
+    toast({
+      title: `Switched to ${modeLabels[newMode]}`,
+      description: modeDescriptions[newMode],
+      type: 'info',
+    })
+    
+    setTimeout(() => setIsProcessing(false), 500)
+  }, [])
 
   const handleFrameSelect = useCallback((frame: VideoFrame) => {
     setSelectedFrame(frame)
@@ -250,44 +143,72 @@ export function VideoIntelligenceDemo() {
   }, [])
 
   const handleRegenerate = useCallback(() => {
-    const newFrames = generateMockFrames(80)
-    setFrames(newFrames)
-    setSelectedObject(null)
-    if (newFrames.length > 0) {
-      setSelectedFrame(newFrames[Math.floor(newFrames.length / 2)])
-    }
-    
-    const totalDetections = newFrames.reduce(
-      (acc, f) => acc + f.metadata.objects.length, 0
-    )
-    const avgConf = newFrames.reduce(
-      (acc, f) => acc + f.metadata.confidence, 0
-    ) / newFrames.length
-
-    setStats({
-      totalFrames: newFrames.length,
-      totalDetections,
-      avgConfidence: avgConf,
-    })
-    
+    dataManager.regenerate()
     toast({
       title: 'Regenerated',
-      description: 'New video frames generated',
+      description: `New ${mode === 'demo' ? 'demo' : 'live'} data generated`,
       type: 'success',
     })
-  }, [])
+  }, [mode])
 
   const toggleLive = useCallback(() => {
     setIsLive(!isLive)
     toast({
-      title: isLive ? 'Paused' : 'Live',
+      title: isLive ? 'Paused' : 'Resumed',
       description: isLive ? 'Live updates paused' : 'Live updates resumed',
       type: 'info',
     })
   }, [isLive])
 
+  const getModeColor = (mode: DataMode) => {
+    switch(mode) {
+      case 'demo': return 'text-amber-500'
+      case 'live': return 'text-emerald-500'
+      case 'hybrid': return 'text-blue-500'
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {/* Mode Selector and Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <ModeToggle mode={mode} onModeChange={handleModeChange} />
+          <Badge variant="outline" className={cn(
+            "gap-1",
+            getModeColor(mode)
+          )}>
+            <Database className="h-3 w-3" />
+            {mode === 'demo' && 'Mock Data'}
+            {mode === 'live' && 'Real AI'}
+            {mode === 'hybrid' && 'Hybrid'}
+          </Badge>
+          {isProcessing && (
+            <Badge variant="outline" className="animate-pulse">
+              Processing...
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleLive}
+          >
+            {isLive ? <Pause className="h-4 w-4 mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+            {isLive ? 'Pause' : 'Resume'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRegenerate}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Regenerate
+          </Button>
+        </div>
+      </div>
+
       {/* Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <Card>
@@ -334,10 +255,12 @@ export function VideoIntelligenceDemo() {
                 <div className="flex items-center gap-1">
                   <span className={cn(
                     "w-2 h-2 rounded-full",
+                    mode === 'demo' ? "bg-amber-500" : 
                     isConnected ? "bg-green-500" : "bg-red-500"
                   )} />
                   <p className="text-sm font-medium">
-                    {isConnected ? 'Connected' : 'Disconnected'}
+                    {mode === 'demo' ? 'Demo' : 
+                     isConnected ? 'Connected' : 'Disconnected'}
                   </p>
                 </div>
               </div>
@@ -376,36 +299,6 @@ export function VideoIntelligenceDemo() {
             className="aspect-video"
           />
 
-          {/* Controls */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={toggleLive}
-              >
-                {isLive ? <Pause className="h-4 w-4 mr-1" /> : <Play className="h-4 w-4 mr-1" />}
-                {isLive ? 'Pause' : 'Resume'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRegenerate}
-              >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Regenerate
-              </Button>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant={isConnected ? "success" : "destructive"}>
-                {isConnected ? '● Connected' : '● Disconnected'}
-              </Badge>
-              {reconnectAttempts > 0 && (
-                <span>Reconnect attempts: {reconnectAttempts}</span>
-              )}
-            </div>
-          </div>
-
           {/* Timeline */}
           <VideoTimeline
             frames={frames}
@@ -415,7 +308,7 @@ export function VideoIntelligenceDemo() {
           />
         </div>
 
-        {/* Side Panel - Object Details */}
+        {/* Side Panel */}
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
